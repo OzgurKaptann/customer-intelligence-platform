@@ -1,0 +1,236 @@
+# =============================================================================
+# Customer Intelligence Platform — Docker Compose
+# -----------------------------------------------------------------------------
+# All service configuration lives here; all secrets are read from `.env` via
+# variable substitution (see .env.example). No secret values are hardcoded.
+#
+# Services (8, LocalExecutor — no separate worker/redis):
+#   postgres, airflow-init, airflow-webserver, airflow-scheduler,
+#   mlflow, fastapi, metabase, data-generator
+#
+# UI services bind to 127.0.0.1 only. All services attach to the internal
+# `cip_internal` bridge network. Named volumes persist data across restarts.
+# =============================================================================
+
+# ---- Shared Airflow configuration (webserver, scheduler, init) --------------
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.7.3-python3.11
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+  volumes:
+    - ./dags:/opt/airflow/dags:ro
+    - ./plugins:/opt/airflow/plugins:ro
+    - airflow_logs:/opt/airflow/logs
+  networks:
+    - cip_internal
+
+services:
+  # ---- PostgreSQL — primary data store for all schemas ----------------------
+  postgres:
+    image: postgres:15.6-alpine
+    container_name: cip-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 2g
+    cpus: 1.5
+    networks:
+      - cip_internal
+
+  # ---- Airflow init — one-shot DB init + admin user creation ----------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: cip-airflow-init
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - >
+        airflow db init &&
+        airflow users create
+        --username admin
+        --password "${AIRFLOW_ADMIN_PASSWORD}"
+        --firstname Admin
+        --lastname User
+        --role Admin
+        --email admin@example.com
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---- Airflow webserver — pipeline UI and REST API -------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: cip-airflow-webserver
+    command: webserver
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1g
+    cpus: 0.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ---- Airflow scheduler — DAG scheduling and task execution ----------------
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: cip-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"*\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1.5g
+    cpus: 1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ---- MLflow — experiment tracking and model registry ----------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    container_name: cip-mlflow
+    environment:
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+    command: >
+      mlflow server
+      --backend-store-uri ${MLFLOW_BACKEND_STORE_URI}
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    ports:
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 512m
+    cpus: 0.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cip_internal
+
+  # ---- FastAPI — REST API serving mart + ML outputs -------------------------
+  fastapi:
+    build:
+      context: ./api
+    image: cip-fastapi:latest
+    container_name: cip-fastapi
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN: ${DB_POOL_MIN}
+      DB_POOL_MAX: ${DB_POOL_MAX}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 512m
+    cpus: 0.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cip_internal
+
+  # ---- Metabase — business dashboards (reads marts schema only) -------------
+  metabase:
+    image: metabase/metabase:v0.48.3
+    container_name: cip-metabase
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: ${POSTGRES_HOST}
+      MB_DB_PORT: ${POSTGRES_PORT}
+      MB_DB_DBNAME: ${MB_DB_DBNAME}
+      MB_DB_USER: ${MB_DB_USER}
+      MB_DB_PASS: ${MB_DB_PASS}
+    volumes:
+      - metabase_data:/metabase-data
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1g
+    cpus: 0.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cip_internal
+
+  # ---- Data generator — one-shot synthetic data seed ------------------------
+  data-generator:
+    build:
+      context: ./generator
+    image: cip-generator:latest
+    container_name: cip-data-generator
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SEED_CUSTOMERS: "100000"
+      SEED_EVENTS_MIN: "1000000"
+      SEED_EVENTS_MAX: "5000000"
+      SEED_ORDERS: "250000"
+      SEED_TICKETS: "50000"
+    restart: on-failure
+    mem_limit: 1g
+    cpus: 1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cip_internal
+
+# ---- Named volumes — persist across `docker compose down`/`up` -------------
+volumes:
+  postgres_data:      # PostgreSQL data directory
+  airflow_logs:       # Airflow task logs (90-day retention)
+  mlflow_artifacts:   # MLflow model artifacts and feature snapshots
+  metabase_data:      # Metabase application data and dashboard config
+
+# ---- Internal bridge network — no outbound internet for data services ------
+networks:
+  cip_internal:
+    driver: bridge
+    internal: true
