@@ -37,6 +37,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # Role passwords consumed by infra/init.sql (\getenv) at first init.
+      RAW_WRITER_PASSWORD: ${RAW_WRITER_PASSWORD}
+      STAGING_WRITER_PASSWORD: ${STAGING_WRITER_PASSWORD}
+      MART_WRITER_PASSWORD: ${MART_WRITER_PASSWORD}
+      MART_READER_PASSWORD: ${MART_READER_PASSWORD}
+      METABASE_DB_PASSWORD: ${METABASE_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
