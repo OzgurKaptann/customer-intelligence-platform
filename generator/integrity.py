@@ -1,14 +1,17 @@
-"""Post-generation referential-integrity assertions (Task 8 scope).
+"""Post-generation referential-integrity assertions.
 
 Requirement 1.6 mandates a post-generation check that every foreign key resolves
-to a valid ``raw.customers`` record and returns zero orphans. Task 8 implements
-only the CRM → Orders → Order Items domains, so only those relationships are
-checked here:
+to a valid ``raw.customers`` record and returns zero orphans. With Task 9
+implemented, the CRM → Orders → Order Items → Events → Tickets domains are all
+generated, so every customer-referencing relationship is checked here:
 
 * ``raw.orders.customer_id``    → ``raw.customers.customer_id``
 * ``raw.order_items.order_id``  → ``raw.orders.order_id``
+* ``raw.events.customer_id``    → ``raw.customers.customer_id``
+* ``raw.tickets.customer_id``   → ``raw.customers.customer_id``
 
-The events and tickets checks belong to Task 9 and are intentionally omitted.
+Only relationships for domains that have actually been generated should be
+listed; campaigns carry no customer foreign key and so have no orphan check.
 """
 
 from __future__ import annotations
@@ -35,6 +38,24 @@ _ORPHAN_CHECKS: tuple[tuple[str, str], ...] = (
         FROM raw.order_items i
         LEFT JOIN raw.orders o ON i.order_id = o.order_id
         WHERE o.order_id IS NULL
+        """,
+    ),
+    (
+        "raw.events.customer_id -> raw.customers.customer_id",
+        """
+        SELECT COUNT(*)
+        FROM raw.events e
+        LEFT JOIN raw.customers c ON e.customer_id = c.customer_id
+        WHERE c.customer_id IS NULL
+        """,
+    ),
+    (
+        "raw.tickets.customer_id -> raw.customers.customer_id",
+        """
+        SELECT COUNT(*)
+        FROM raw.tickets t
+        LEFT JOIN raw.customers c ON t.customer_id = c.customer_id
+        WHERE c.customer_id IS NULL
         """,
     ),
 )
