@@ -123,7 +123,10 @@ services:
 
   # ---- MLflow — experiment tracking and model registry ----------------------
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.9.2
+    build:
+      context: ./infra
+      dockerfile: mlflow.Dockerfile
+    image: cip-mlflow:latest
     container_name: cip-mlflow
     environment:
       MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
@@ -138,7 +141,8 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5000/health"]
+      # Upstream MLflow image has no curl; use the bundled Python interpreter.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health').getcode()==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 5

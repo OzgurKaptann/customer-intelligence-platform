@@ -45,6 +45,21 @@ SELECT current_database() AS dbname, current_user AS admin_user \gset
 
 
 -- -----------------------------------------------------------------------------
+-- 0. Companion databases (mlflow, airflow)
+--    The MLflow tracking server and Airflow metadata DB each need their own
+--    database on this Postgres instance (see docker-compose.yml). PostgreSQL has
+--    no CREATE DATABASE IF NOT EXISTS and cannot run CREATE DATABASE inside a DO
+--    block, so guard with a pg_database check and execute via \gexec. These run
+--    in the current (POSTGRES_DB) connection; the databases are created empty and
+--    each service manages its own tables.
+-- -----------------------------------------------------------------------------
+SELECT 'CREATE DATABASE mlflow'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'mlflow')\gexec
+SELECT 'CREATE DATABASE airflow'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'airflow')\gexec
+
+
+-- -----------------------------------------------------------------------------
 -- 1. Schemas
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS raw;           -- append-only landing zone
