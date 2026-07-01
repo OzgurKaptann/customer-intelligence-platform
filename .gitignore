@@ -1,0 +1,12 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# MLflow
+mlflow/artifacts/
+
+# dbt
+.dbt/
