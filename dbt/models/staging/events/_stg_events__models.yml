@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_events__events
+    description: >
+      Cleaned, deduplicated clickstream events. One row per event_id, retaining
+      the record with the latest ingestion timestamp. Structural transforms only:
+      occurred_at cast to TIMESTAMPTZ and _ingested_at renamed to ingested_at.
+    columns:
+      - name: event_id
+        description: Unique event identifier (UUID). Primary key.
+      - name: session_id
+        description: Session grouping key linking related events.
+      - name: customer_id
+        description: Customer that generated the event. Foreign key to stg_crm__customers.
+      - name: event_type
+        description: Interaction type, e.g. page_view, click, session_start.
+      - name: page_url
+        description: URL associated with the event.
+      - name: device_type
+        description: Device category, e.g. desktop, mobile, tablet.
+      - name: occurred_at
+        description: UTC timestamp of the event (cast to TIMESTAMPTZ).
+      - name: ingested_at
+        description: Row arrival timestamp in the Raw Zone (renamed from _ingested_at).
+      - name: _run_date
+        description: Pipeline run date partition key inherited from the Raw Zone.

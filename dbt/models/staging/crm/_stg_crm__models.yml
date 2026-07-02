@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_crm__customers
+    description: >
+      Cleaned, deduplicated CRM customers. One row per customer_id, retaining the
+      record with the latest ingestion timestamp. Structural transforms only:
+      account_created_at cast to DATE and _ingested_at renamed to ingested_at.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier (UUID4). Primary key.
+      - name: name
+        description: Synthetic full name of the customer.
+      - name: email
+        description: Synthetic email address; unique per customer.
+      - name: acquisition_channel
+        description: >
+          Acquisition channel — one of organic, paid_search, social, referral, direct.
+      - name: country_code
+        description: ISO 3166-1 alpha-2 country code (2 characters).
+      - name: account_created_at
+        description: UTC date the customer account was created (cast to DATE).
+      - name: ingested_at
+        description: Row arrival timestamp in the Raw Zone (renamed from _ingested_at).
+      - name: _run_date
+        description: Pipeline run date partition key inherited from the Raw Zone.

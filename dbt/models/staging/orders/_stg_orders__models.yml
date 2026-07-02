@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_orders__orders
+    description: >
+      Cleaned, deduplicated order headers. One row per order_id, retaining the
+      record with the latest ingestion timestamp. Structural transforms only:
+      total_amount_usd cast to NUMERIC(12,2), ordered_at cast to TIMESTAMPTZ,
+      and rows with a NULL customer_id filtered out.
+    columns:
+      - name: order_id
+        description: Unique order identifier (UUID). Primary key.
+      - name: customer_id
+        description: Customer that placed the order. Foreign key to stg_crm__customers.
+      - name: order_status
+        description: >
+          Order lifecycle status — one of completed, pending, cancelled, refunded.
+      - name: total_amount_usd
+        description: Total order amount in USD (NUMERIC(12,2)).
+      - name: ordered_at
+        description: UTC timestamp of the order (cast to TIMESTAMPTZ).
+      - name: ingested_at
+        description: Row arrival timestamp in the Raw Zone (renamed from _ingested_at).
+      - name: _run_date
+        description: Pipeline run date partition key inherited from the Raw Zone.
+
+  - name: stg_orders__order_items
+    description: >
+      Cleaned order line items. One row per order_item_id (unique at source, so no
+      deduplication). Structural transforms only: quantity cast to INTEGER and
+      unit_price_usd cast to NUMERIC(10,2).
+    columns:
+      - name: order_item_id
+        description: Unique line item identifier (UUID). Primary key.
+      - name: order_id
+        description: Parent order. Foreign key to stg_orders__orders.
+      - name: product_id
+        description: Identifier of the purchased product.
+      - name: quantity
+        description: Number of units purchased (positive integer).
+      - name: unit_price_usd
+        description: Unit price in USD (NUMERIC(10,2), non-negative).
+      - name: ingested_at
+        description: Row arrival timestamp in the Raw Zone (renamed from _ingested_at).
+      - name: _run_date
+        description: Pipeline run date partition key inherited from the Raw Zone.
