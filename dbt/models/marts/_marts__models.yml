@@ -154,3 +154,195 @@ models:
         description: Pipeline run date partition key from audit_columns().
         tests:
           - not_null
+
+  - name: mart_support_tickets
+    description: >
+      Business-facing support ticket fact table. One row per ticket carrying the
+      ticket header fields plus the derived resolution_hours, and the NLP
+      enrichment columns cluster_id, cluster_label, and cluster_confidence. The
+      NLP columns are nullable placeholders populated by the NLP_Processor after
+      the daily ticket clustering model runs. Materialized as a full-refresh
+      table.
+    columns:
+      - name: ticket_id
+        description: Unique ticket identifier (UUID). Primary key of the fact table.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer that opened the ticket. Foreign key to mart_customers.
+        tests:
+          - not_null
+      - name: subject
+        description: Short subject line of the ticket.
+        tests:
+          - not_null
+      - name: status
+        description: Ticket lifecycle status — one of open, in_progress, closed.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["open", "in_progress", "closed"]
+      - name: priority
+        description: Ticket priority level — one of low, medium, high.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["low", "medium", "high"]
+      - name: created_at
+        description: UTC timestamp of ticket creation.
+        tests:
+          - not_null
+      - name: resolved_at
+        description: >
+          UTC timestamp of ticket resolution; NULL when the ticket is not yet
+          resolved.
+      - name: resolution_hours
+        description: >
+          Derived resolution time in hours — (resolved_at - created_at) cast to
+          NUMERIC(8,2); NULL when the ticket is unresolved.
+      - name: cluster_id
+        description: >
+          NLP cluster identifier assigned by the NLP_Processor. Nullable; NULL
+          until the ticket clustering model has scored the ticket.
+      - name: cluster_label
+        description: >
+          Human-readable 1-10 word NLP cluster label (VARCHAR(200)) derived from
+          the cluster's top TF-IDF terms. Nullable until scored.
+      - name: cluster_confidence
+        description: >
+          NLP cluster assignment confidence in [0.00, 1.00] (NUMERIC(5,4)).
+          Nullable until scored.
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+        tests:
+          - not_null
+
+  - name: mart_customer_360
+    description: >
+      Central per-customer feature store — one row per customer — joining the
+      enriched customer attributes with order, event, and ticket aggregates. Adds
+      RFM quintile scores (computed with NTILE(5) over the active customer
+      population), the composite rfm_score string, capped recency_days, trailing
+      and all-time order metrics, the order_frequency_trend, run-wide
+      active_campaign_count, open_ticket_count, and the is_active flag. Customers
+      with no orders in the trailing 365 days are treated as inactive: rfm_score
+      'R0F0M0', all RFM dimension scores 0, recency_days 999, is_active FALSE.
+      Materialized incrementally (delete+insert on _run_date).
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Primary key of the feature store.
+        tests:
+          - not_null
+          - unique
+      - name: recency_score
+        description: >
+          RFM recency quintile (0-5). 5 = most recent buyer; 0 = inactive
+          customer with no trailing 365-day orders.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3, 4, 5]
+      - name: frequency_score
+        description: >
+          RFM frequency quintile (0-5) over trailing 365-day order count. 5 =
+          most frequent; 0 = inactive.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3, 4, 5]
+      - name: monetary_score
+        description: >
+          RFM monetary quintile (0-5) over trailing 365-day spend. 5 = highest
+          spend; 0 = inactive.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3, 4, 5]
+      - name: rfm_score
+        description: >
+          Composite RFM string of the form R{r}F{f}M{m} (e.g. R5F3M4). Inactive
+          customers receive 'R0F0M0'.
+        tests:
+          - not_null
+      - name: recency_days
+        description: >
+          Whole days since the customer's most recent order, capped at 999.
+          Inactive customers (no orders) are set to 999.
+        tests:
+          - not_null
+      - name: order_frequency_365d
+        description: Order count in the trailing 365 days.
+        tests:
+          - not_null
+      - name: total_spend_365d_usd
+        description: Total spend in USD in the trailing 365 days (NUMERIC(14,2)).
+        tests:
+          - not_null
+      - name: total_order_count
+        description: All-time order count for the customer.
+        tests:
+          - not_null
+      - name: total_spend_usd
+        description: All-time spend in USD for the customer (NUMERIC(14,2)).
+        tests:
+          - not_null
+      - name: most_recent_event_date
+        description: >
+          Date (UTC) of the customer's most recent event; NULL when the customer
+          has no events.
+      - name: days_since_last_event
+        description: >
+          Whole days from the most recent event to the run date; NULL when the
+          customer has no events.
+      - name: days_since_last_order
+        description: >
+          Whole days from the most recent order to the run date (uncapped); NULL
+          when the customer has no orders.
+      - name: order_count_last_30d
+        description: Order count in the trailing 30 days.
+        tests:
+          - not_null
+      - name: order_count_prior_30d
+        description: Order count in the 30 days preceding the trailing 30-day window.
+        tests:
+          - not_null
+      - name: order_frequency_trend
+        description: >
+          order_count_last_30d minus order_count_prior_30d; positive means
+          accelerating order activity.
+        tests:
+          - not_null
+      - name: active_campaign_count
+        description: >
+          Run-wide count of campaigns with spend in the trailing 30 days. Same
+          value on every customer row (cross-joined scalar).
+        tests:
+          - not_null
+      - name: open_ticket_count
+        description: Count of the customer's tickets with status open or in_progress.
+        tests:
+          - not_null
+      - name: acquisition_channel
+        description: Channel through which the customer was acquired.
+        tests:
+          - not_null
+      - name: customer_tenure_days
+        description: Whole days from account_created_at to the pipeline run date.
+        tests:
+          - not_null
+      - name: is_active
+        description: >
+          TRUE when the customer placed at least one order in the trailing 365
+          days; otherwise FALSE.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: _run_date
+        description: >
+          Pipeline run date partition key from audit_columns(); the unique_key
+          for the incremental delete+insert strategy.
+        tests:
+          - not_null
