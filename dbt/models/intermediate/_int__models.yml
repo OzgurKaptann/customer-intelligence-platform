@@ -1,0 +1,215 @@
+version: 2
+
+models:
+  - name: int_sessions__with_duration
+    description: >
+      Session-grain model derived from stg_events__events. One row per session_id
+      with the session start/end timestamps and the total session duration in
+      seconds. Session aggregation is deferred from the staging layer to here.
+    columns:
+      - name: session_id
+        description: Session grouping key (UUID). Primary key of this model.
+        tests:
+          - not_null
+          - unique
+      - name: session_start
+        description: Timestamp of the first event in the session (MIN of occurred_at).
+        tests:
+          - not_null
+      - name: session_end
+        description: Timestamp of the last event in the session (MAX of occurred_at).
+        tests:
+          - not_null
+      - name: session_duration_seconds
+        description: >
+          Wall-clock span of the session in seconds (session_end minus
+          session_start). Always non-negative; a single-event session is 0.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "session_duration_seconds >= 0"
+
+  - name: int_orders__with_items
+    description: >
+      Order-grain model joining stg_orders__orders to stg_orders__order_items.
+      Derives item_count (count of line items) and avg_item_value_usd (total
+      order amount divided by item_count). One row per order.
+    columns:
+      - name: order_id
+        description: Unique order identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer that placed the order. Foreign key to int_customers__enriched.
+        tests:
+          - not_null
+      - name: order_status
+        description: Order lifecycle status (completed, pending, cancelled, refunded).
+        tests:
+          - not_null
+      - name: total_amount_usd
+        description: Total order amount in USD (NUMERIC(12,2)).
+        tests:
+          - not_null
+      - name: item_count
+        description: Number of line items on the order. Derived; always >= 1.
+        tests:
+          - not_null
+      - name: avg_item_value_usd
+        description: >
+          Average line-item value in USD (total_amount_usd / item_count),
+          cast to NUMERIC(10,2). Non-negative.
+        tests:
+          - not_null
+      - name: ordered_at
+        description: UTC timestamp of the order.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "item_count >= 1"
+      - dbt_utils.expression_is_true:
+          expression: "avg_item_value_usd >= 0"
+
+  - name: int_customer_orders__aggregated
+    description: >
+      Customer-grain order aggregates derived from int_orders__with_items.
+      Computes all-time order count and spend, trailing 365-day frequency and
+      spend, rolling 30-day order counts, and days since last order relative to
+      the pipeline run date. One row per customer.
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
+      - name: total_order_count
+        description: All-time count of orders placed by the customer.
+        tests:
+          - not_null
+      - name: total_spend_usd
+        description: All-time total spend in USD (NUMERIC(14,2)).
+        tests:
+          - not_null
+      - name: order_frequency_365d
+        description: Count of orders placed in the trailing 365 days.
+        tests:
+          - not_null
+      - name: total_spend_365d_usd
+        description: Total spend in USD over the trailing 365 days (NUMERIC(14,2)).
+        tests:
+          - not_null
+      - name: order_count_last_30d
+        description: Count of orders placed in the last 30 days.
+        tests:
+          - not_null
+      - name: order_count_prior_30d
+        description: Count of orders placed in the 30 days before the last 30 days.
+        tests:
+          - not_null
+      - name: days_since_last_order
+        description: Whole days from the most recent order date to the run date.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "total_order_count >= 1"
+      - dbt_utils.expression_is_true:
+          expression: "order_frequency_365d >= 0"
+      - dbt_utils.expression_is_true:
+          expression: "days_since_last_order >= 0"
+
+  - name: int_customer_events__aggregated
+    description: >
+      Customer-grain event aggregates derived from stg_events__events. Computes
+      the most recent event date and days since last event relative to the run
+      date. One row per customer.
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
+      - name: most_recent_event_date
+        description: Date of the customer's most recent event (UTC).
+        tests:
+          - not_null
+      - name: days_since_last_event
+        description: Whole days from the most recent event date to the run date.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "days_since_last_event >= 0"
+
+  - name: int_customer_tickets__aggregated
+    description: >
+      Customer-grain support ticket aggregates derived from stg_support__tickets.
+      Computes the count of currently open tickets (status open or in_progress).
+      One row per customer.
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
+      - name: open_ticket_count
+        description: Count of tickets with status open or in_progress.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "open_ticket_count >= 0"
+
+  - name: int_customers__enriched
+    description: >
+      Customer enrichment model derived from stg_crm__customers. Passes through
+      customer attributes and derives customer_tenure_days (days from account
+      creation to the run date). One row per customer.
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: Customer full name (synthetic).
+        tests:
+          - not_null
+      - name: email
+        description: Customer email address (synthetic, unique).
+        tests:
+          - not_null
+      - name: acquisition_channel
+        description: Channel through which the customer was acquired.
+        tests:
+          - not_null
+      - name: country_code
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: account_created_at
+        description: Date the customer account was created (UTC).
+        tests:
+          - not_null
+      - name: customer_tenure_days
+        description: Whole days from account_created_at to the run date.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "customer_tenure_days >= 0"
