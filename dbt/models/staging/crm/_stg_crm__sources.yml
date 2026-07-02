@@ -1,0 +1,40 @@
+version: 2
+
+sources:
+  - name: crm
+    description: >
+      Raw Zone CRM domain — append-only synthetic customer records landed by the
+      ingestion layer. Consumed only by the CRM staging models.
+    database: "{{ env_var('CIP_DB_NAME', 'cip') }}"
+    schema: raw
+    # Source freshness is measured against the row arrival timestamp. The
+    # ingestion DAG runs daily, so data older than one day is stale.
+    loaded_at_field: _ingested_at
+    freshness:
+      warn_after: {count: 1, period: day}
+      error_after: {count: 2, period: day}
+    tables:
+      - name: customers
+        description: >
+          Raw synthetic CRM records, one row per customer per ingestion event.
+          May contain duplicate customer_id values across re-runs; the staging
+          layer deduplicates by latest _ingested_at.
+        columns:
+          - name: customer_id
+            description: Unique customer identifier (UUID4). Primary key of the CRM domain.
+          - name: name
+            description: Synthetic full name of the customer.
+          - name: email
+            description: Synthetic email address; unique per customer in the source contract.
+          - name: acquisition_channel
+            description: >
+              Channel through which the customer was acquired — one of
+              organic, paid_search, social, referral, direct.
+          - name: country_code
+            description: ISO 3166-1 alpha-2 country code (2 characters).
+          - name: account_created_at
+            description: UTC date the customer account was created.
+          - name: _ingested_at
+            description: Timestamp (TIMESTAMPTZ) at which the row landed in the Raw Zone.
+          - name: _run_date
+            description: Pipeline run date partition key (DATE) assigned at ingestion.
