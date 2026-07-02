@@ -1,0 +1,21 @@
+{
+  "expectation_suite_name": "raw_events_suite",
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.19",
+    "notes": "Raw web/mobile events — required-field presence and >=95% non-null on event_id, customer_id, occurred_at, event_type. Requirements 4.2, 4.3, 4.6."
+  },
+  "expectations": [
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "event_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "customer_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "occurred_at"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "event_type"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "event_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "customer_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "occurred_at", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "event_type", "mostly": 0.95}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_unique", "kwargs": {"column": "event_id"}, "meta": {}}
+  ]
+}
