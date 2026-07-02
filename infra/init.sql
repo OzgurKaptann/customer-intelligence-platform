@@ -221,3 +221,137 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"admin_user", mart_writer IN SCHEMA observabi
 -- =============================================================================
 -- End of Task 3 initialization.
 -- =============================================================================
+
+
+-- =============================================================================
+-- Task 20: observability & ml table DDL
+-- -----------------------------------------------------------------------------
+-- Creates the persistent base tables that are written outside of dbt: the
+-- observability logs, the ML scoring write target (ml.ml_scores), and the
+-- anomaly metric history (ml.anomaly_metrics). Column definitions, types, and
+-- indexes follow the design's Data Models section exactly.
+--
+-- These tables are created by the bootstrap superuser (:"admin_user"). The
+-- ALTER DEFAULT PRIVILEGES registered in section 5 above run before this DDL, so
+-- mart_writer / mart_reader automatically inherit the correct grants on the
+-- tables and BIGSERIAL-backed sequences created here.
+--
+-- The marts.* tables are intentionally NOT created here — dbt owns and
+-- materializes every mart_* model (including the incremental mart_ml_scores).
+--
+-- Idempotency: every statement uses IF NOT EXISTS, so this script remains safe
+-- to run multiple times.
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- observability.pipeline_run_log — per-DAG run metadata & SLA records
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS observability.pipeline_run_log (
+    log_id                BIGSERIAL    PRIMARY KEY,
+    run_date              DATE         NOT NULL,
+    dag_name              VARCHAR(200) NOT NULL,
+    status                VARCHAR(30)  NOT NULL,   -- running, success, failed, sla_miss
+    started_at            TIMESTAMPTZ  NOT NULL,
+    completed_at          TIMESTAMPTZ,
+    duration_seconds      INTEGER,
+    rows_ingested         INTEGER,
+    rows_transformed      INTEGER,
+    qg_tests_total        INTEGER,
+    qg_tests_passed       INTEGER,
+    qg_tests_failed       INTEGER,
+    sla_breach_at         TIMESTAMPTZ,
+    memory_usage_mb_start NUMERIC(8, 2),
+    memory_usage_mb_end   NUMERIC(8, 2),
+    cpu_pct_start         NUMERIC(5, 2),
+    cpu_pct_end           NUMERIC(5, 2),
+    notes                 TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_pipeline_run_log_run_date
+    ON observability.pipeline_run_log (run_date);
+CREATE INDEX IF NOT EXISTS ix_pipeline_run_log_dag_run_date
+    ON observability.pipeline_run_log (dag_name, run_date);
+CREATE INDEX IF NOT EXISTS ix_pipeline_run_log_status
+    ON observability.pipeline_run_log (status);
+
+
+-- -----------------------------------------------------------------------------
+-- observability.dq_failures — Great Expectations & dbt test failures
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS observability.dq_failures (
+    failure_id              BIGSERIAL    PRIMARY KEY,
+    run_date                DATE         NOT NULL,
+    failure_type            VARCHAR(20)  NOT NULL,   -- great_expectations | dbt_test
+    source_domain           VARCHAR(50)  NOT NULL,
+    table_name              VARCHAR(200) NOT NULL,
+    checkpoint_or_test_name VARCHAR(500) NOT NULL,
+    failing_column          VARCHAR(200),
+    failing_expectation     TEXT,
+    sample_failing_rows     JSONB,
+    logged_at               TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_dq_failures_run_date
+    ON observability.dq_failures (run_date);
+CREATE INDEX IF NOT EXISTS ix_dq_failures_source_domain
+    ON observability.dq_failures (source_domain);
+CREATE INDEX IF NOT EXISTS ix_dq_failures_failure_type
+    ON observability.dq_failures (failure_type);
+
+
+-- -----------------------------------------------------------------------------
+-- observability.ml_insights — daily Insights_Generator JSON output
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS observability.ml_insights (
+    insight_id        BIGSERIAL    PRIMARY KEY,
+    run_date          DATE         NOT NULL UNIQUE, -- one insight record per run date
+    insight_json      JSONB        NOT NULL,
+    generated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    source_dag_run_id VARCHAR(200)
+);
+-- The UNIQUE constraint on run_date already provides the run_date index the
+-- design calls for, so no separate index is created here.
+
+
+-- -----------------------------------------------------------------------------
+-- ml.ml_scores — ML pipeline write target (promoted into marts.mart_ml_scores)
+--   CHECK constraints enforce the score bounds at the database boundary in
+--   addition to the dbt tests on mart_ml_scores.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ml.ml_scores (
+    customer_id     VARCHAR(36)   NOT NULL,
+    score_date      DATE          NOT NULL,
+    model_run_id    VARCHAR(200),
+    ltv_score       NUMERIC(12, 2) CHECK (ltv_score >= 0),
+    churn_score     NUMERIC(5, 4)  CHECK (churn_score >= 0.0 AND churn_score <= 1.0),
+    churn_risk_tier VARCHAR(10)    CHECK (churn_risk_tier IN ('Low', 'Medium', 'High')),
+    segment_label   VARCHAR(100),
+    anomaly_flag    BOOLEAN,
+    anomaly_detail  JSONB,
+    scored_at       TIMESTAMPTZ,
+    PRIMARY KEY (customer_id, score_date)
+);
+
+
+-- -----------------------------------------------------------------------------
+-- ml.anomaly_metrics — per-metric daily values & z-score anomaly evaluation
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ml.anomaly_metrics (
+    metric_id           BIGSERIAL     PRIMARY KEY,
+    run_date            DATE          NOT NULL,
+    metric_name         VARCHAR(100)  NOT NULL,
+    observed_value      NUMERIC(18, 4),
+    rolling_mean_30d    NUMERIC(18, 4),   -- NULL if baseline_pending
+    rolling_std_30d     NUMERIC(18, 4),   -- NULL if baseline_pending
+    z_score             NUMERIC(8, 4),    -- NULL if baseline_pending
+    anomaly_flag        BOOLEAN,
+    severity            VARCHAR(20),       -- Warning | Critical | baseline_pending
+    expected_range_low  NUMERIC(18, 4),   -- mean - 2*std
+    expected_range_high NUMERIC(18, 4)    -- mean + 2*std
+);
+CREATE INDEX IF NOT EXISTS ix_anomaly_metrics_run_date
+    ON ml.anomaly_metrics (run_date);
+CREATE INDEX IF NOT EXISTS ix_anomaly_metrics_metric_run_date
+    ON ml.anomaly_metrics (metric_name, run_date);
+
+-- =============================================================================
+-- End of Task 20 DDL.
+-- =============================================================================

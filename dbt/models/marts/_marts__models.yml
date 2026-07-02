@@ -1,5 +1,44 @@
 version: 2
 
+sources:
+  # ml.ml_scores is not a dbt model — it is the ML pipeline's write target,
+  # populated by ml/scoring/score_all.py + the ml_scores_promotion step. It is
+  # declared here as a source so mart_ml_scores can ref it via source().
+  - name: ml
+    description: >
+      ML scoring outputs written by the ML pipeline before promotion into the
+      marts layer. Read by mart_ml_scores.
+    database: "{{ env_var('CIP_DB_NAME', 'cip') }}"
+    schema: ml
+    tables:
+      - name: ml_scores
+        description: >
+          One row per customer per score_date, carrying the LTV, churn,
+          segmentation, and anomaly scores plus the MLflow model_run_id used to
+          produce them. mart_ml_scores promotes the current run date's partition
+          from this table into the marts layer.
+        columns:
+          - name: customer_id
+            description: Customer identifier (UUID). Part of the composite primary key.
+          - name: score_date
+            description: Run date the scores were produced for. Part of the composite primary key.
+          - name: model_run_id
+            description: MLflow run ID of the models that produced the row, for traceability.
+          - name: ltv_score
+            description: Predicted 12-month LTV in USD (NUMERIC(12,2)); non-negative.
+          - name: churn_score
+            description: Churn probability in [0.0, 1.0] (NUMERIC(5,4)).
+          - name: churn_risk_tier
+            description: Churn tier derived from churn_score — one of Low, Medium, High.
+          - name: segment_label
+            description: Segmentation cluster label (e.g. Champions, Inactive).
+          - name: anomaly_flag
+            description: Boolean anomaly indicator set by the Anomaly_Model.
+          - name: anomaly_detail
+            description: JSONB anomaly detail {metric, observed, expected_range, severity}; NULL when no anomaly.
+          - name: scored_at
+            description: Timestamp (TIMESTAMPTZ) at which the ML pipeline wrote the row.
+
 models:
   - name: mart_customers
     description: >
@@ -340,6 +379,83 @@ models:
           - accepted_values:
               values: [true, false]
               quote: false
+      - name: _run_date
+        description: >
+          Pipeline run date partition key from audit_columns(); the unique_key
+          for the incremental delete+insert strategy.
+        tests:
+          - not_null
+
+  - name: mart_ml_scores
+    description: >
+      Business-facing ML scores fact table — one row per customer per score_date.
+      Promotes the ML pipeline's per-customer scoring output from ml.ml_scores
+      (LTV, churn, segmentation, and anomaly results) into the marts layer for API
+      and dashboard consumption; it computes no scores itself. Only the current
+      run date's partition is promoted each run. Materialized incrementally
+      (delete+insert on _run_date). Score bounds are enforced here: churn_score in
+      [0.0, 1.0] and ltv_score >= 0.
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Part of the composite primary key.
+        tests:
+          - not_null
+      - name: score_date
+        description: Run date the scores were produced for. Part of the composite primary key.
+        tests:
+          - not_null
+      - name: model_run_id
+        description: >
+          MLflow run ID of the models that produced this score row, carried
+          through for lineage and traceability.
+      - name: ltv_score
+        description: >
+          Predicted 12-month lifetime value in USD (NUMERIC(12,2)). Non-negative
+          by contract (LTV_Model clips predictions to a 0.00 minimum).
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: churn_score
+        description: >
+          Churn probability in the closed interval [0.0, 1.0] (NUMERIC(5,4)) —
+          the likelihood of no order or event activity in the 90 days following
+          the score date.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0.0
+              max_value: 1.0
+              inclusive: true
+      - name: churn_risk_tier
+        description: >
+          Churn risk tier derived from churn_score — Low (< 0.33),
+          Medium ([0.33, 0.67)), or High (>= 0.67).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["Low", "Medium", "High"]
+      - name: segment_label
+        description: >
+          Segmentation cluster label assigned by the Segmentation_Model (e.g.
+          Champions, Loyal, At-Risk, Inactive).
+        tests:
+          - not_null
+      - name: anomaly_flag
+        description: >
+          Boolean anomaly indicator, defaulting to FALSE. Set to TRUE by the
+          Anomaly_Model when a metric for this run breaches its expected bounds.
+        tests:
+          - not_null
+      - name: anomaly_detail
+        description: >
+          JSONB anomaly detail {metric, observed, expected_range, severity};
+          NULL when no anomaly applies to the customer.
+      - name: scored_at
+        description: >
+          Timestamp (TIMESTAMPTZ) at which the ML pipeline wrote the underlying
+          ml.ml_scores row.
       - name: _run_date
         description: >
           Pipeline run date partition key from audit_columns(); the unique_key
