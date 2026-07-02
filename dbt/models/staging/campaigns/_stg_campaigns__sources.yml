@@ -1,0 +1,41 @@
+version: 2
+
+sources:
+  - name: campaigns
+    description: >
+      Raw Zone Campaigns domain — append-only synthetic Google Ads and Meta Ads
+      daily performance records landed by the ingestion layer. Consumed only by
+      the Campaigns staging model.
+    database: "{{ env_var('CIP_DB_NAME', 'cip') }}"
+    schema: raw
+    loaded_at_field: _ingested_at
+    freshness:
+      warn_after: {count: 1, period: day}
+      error_after: {count: 2, period: day}
+    tables:
+      - name: campaigns
+        description: >
+          Raw synthetic campaign performance, one row per campaign per day. The
+          natural key is the composite (campaign_id, campaign_date); duplicates
+          across re-runs are deduplicated downstream by latest _ingested_at.
+        columns:
+          - name: campaign_id
+            description: Campaign identifier (UUID). Part of the composite primary key.
+          - name: platform
+            description: Advertising platform — one of google_ads, meta_ads.
+          - name: campaign_name
+            description: Human-readable campaign name.
+          - name: daily_spend_usd
+            description: Spend for the campaign on the given day in USD (NUMERIC(12,2), non-negative).
+          - name: impressions
+            description: Number of ad impressions on the given day (non-negative integer).
+          - name: clicks
+            description: >
+              Number of ad clicks on the given day (non-negative integer, never
+              exceeding impressions).
+          - name: campaign_date
+            description: Calendar date (DATE) of the metrics. Part of the composite primary key.
+          - name: _ingested_at
+            description: Timestamp (TIMESTAMPTZ) at which the row landed in the Raw Zone.
+          - name: _run_date
+            description: Pipeline run date partition key (DATE) assigned at ingestion.

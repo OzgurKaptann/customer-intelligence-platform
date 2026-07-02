@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_campaigns__campaigns
+    description: >
+      Cleaned, deduplicated campaign performance. One row per
+      (campaign_id, campaign_date), retaining the record with the latest ingestion
+      timestamp. Structural transforms only: daily_spend_usd cast to NUMERIC(12,2),
+      impressions and clicks cast to INTEGER, and click_through_rate derived as
+      clicks / NULLIF(impressions, 0).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - campaign_id
+            - campaign_date
+    columns:
+      - name: campaign_id
+        description: Campaign identifier (UUID). Part of the composite primary key.
+        tests:
+          - not_null
+      - name: campaign_date
+        description: Calendar date (DATE) of the metrics. Part of the composite primary key.
+        tests:
+          - not_null
+      - name: platform
+        description: Advertising platform — one of google_ads, meta_ads.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["google_ads", "meta_ads"]
+      - name: campaign_name
+        description: Human-readable campaign name.
+      - name: daily_spend_usd
+        description: Spend for the campaign on the given day in USD (NUMERIC(12,2)).
+      - name: impressions
+        description: Number of ad impressions on the given day (INTEGER).
+      - name: clicks
+        description: Number of ad clicks on the given day (INTEGER).
+      - name: click_through_rate
+        description: >
+          Derived click-through rate — clicks divided by NULLIF(impressions, 0);
+          NULL when impressions is zero.
+      - name: ingested_at
+        description: Row arrival timestamp in the Raw Zone (renamed from _ingested_at).
+      - name: _run_date
+        description: Pipeline run date partition key inherited from the Raw Zone.
