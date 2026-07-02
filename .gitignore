@@ -5,6 +5,10 @@
 __pycache__/
 *.pyc
 
+# Test caches
+.pytest_cache/
+.hypothesis/
+
 # MLflow
 mlflow/artifacts/
 
