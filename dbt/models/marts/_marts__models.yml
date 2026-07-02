@@ -46,6 +46,15 @@ models:
       CRM attributes with trailing-window order and event activity. Exposes
       is_active, the primary flag used by dashboards and downstream ML features to
       distinguish engaged customers from dormant ones.
+    tests:
+      # Recency guard: the mart must carry the current run date's partition.
+      # severity warn so a stale mart surfaces without halting the pipeline.
+      - dbt_utils.recency:
+          datepart: day
+          field: _run_date
+          interval: 1
+          config:
+            severity: warn
     columns:
       - name: customer_id
         description: Customer identifier (UUID). Primary key of the dimension.
@@ -94,6 +103,15 @@ models:
       header fields plus the derived line-item metrics item_count and
       avg_item_value_usd. Materialized incrementally (delete+insert on _run_date)
       to refresh the current run date's partition without rebuilding history.
+    tests:
+      # Recency guard: the mart must carry the current run date's partition.
+      # severity warn so a stale mart surfaces without halting the pipeline.
+      - dbt_utils.recency:
+          datepart: day
+          field: _run_date
+          interval: 1
+          config:
+            severity: warn
     columns:
       - name: order_id
         description: >
@@ -146,6 +164,14 @@ models:
           combination_of_columns:
             - campaign_id
             - campaign_date
+      # Recency guard: the mart must carry the current run date's partition.
+      # severity warn so a stale mart surfaces without halting the pipeline.
+      - dbt_utils.recency:
+          datepart: day
+          field: _run_date
+          interval: 1
+          config:
+            severity: warn
     columns:
       - name: campaign_id
         description: Campaign identifier (UUID). Part of the composite primary key.
@@ -202,6 +228,15 @@ models:
       NLP columns are nullable placeholders populated by the NLP_Processor after
       the daily ticket clustering model runs. Materialized as a full-refresh
       table.
+    tests:
+      # Recency guard: the mart must carry the current run date's partition.
+      # severity warn so a stale mart surfaces without halting the pipeline.
+      - dbt_utils.recency:
+          datepart: day
+          field: _run_date
+          interval: 1
+          config:
+            severity: warn
     columns:
       - name: ticket_id
         description: Unique ticket identifier (UUID). Primary key of the fact table.
@@ -268,6 +303,15 @@ models:
       with no orders in the trailing 365 days are treated as inactive: rfm_score
       'R0F0M0', all RFM dimension scores 0, recency_days 999, is_active FALSE.
       Materialized incrementally (delete+insert on _run_date).
+    tests:
+      # Recency guard: the mart must carry the current run date's partition.
+      # severity warn so a stale mart surfaces without halting the pipeline.
+      - dbt_utils.recency:
+          datepart: day
+          field: _run_date
+          interval: 1
+          config:
+            severity: warn
     columns:
       - name: customer_id
         description: Customer identifier (UUID). Primary key of the feature store.
@@ -395,6 +439,15 @@ models:
       run date's partition is promoted each run. Materialized incrementally
       (delete+insert on _run_date). Score bounds are enforced here: churn_score in
       [0.0, 1.0] and ltv_score >= 0.
+    tests:
+      # Recency guard: the mart must carry the current run date's partition.
+      # severity warn so a stale mart surfaces without halting the pipeline.
+      - dbt_utils.recency:
+          datepart: day
+          field: _run_date
+          interval: 1
+          config:
+            severity: warn
     columns:
       - name: customer_id
         description: Customer identifier (UUID). Part of the composite primary key.
