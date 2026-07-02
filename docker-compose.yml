@@ -21,9 +21,13 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/airflow
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    # Location of the flat generator/ modules imported by the ingestion DAGs
+    # (Task 11). ingestion_common._ensure_generator_on_path() reads this.
+    CIP_GENERATOR_PATH: /opt/airflow/generator
   volumes:
     - ./dags:/opt/airflow/dags:ro
     - ./plugins:/opt/airflow/plugins:ro
+    - ./generator:/opt/airflow/generator:ro
     - airflow_logs:/opt/airflow/logs
   networks:
     - cip_internal
