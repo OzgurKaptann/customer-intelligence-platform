@@ -1,0 +1,23 @@
+# dbt connection profile for the Customer Intelligence Platform.
+#
+# All connection parameters are sourced from environment variables so that no
+# secrets are committed to source control (NFR-6.1). Defaults match the
+# service names on the Docker Compose internal network; override via the
+# environment for local venv runs.
+cip:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('CIP_DB_HOST', 'postgres') }}"
+      port: "{{ env_var('CIP_DB_PORT', '5432') | int }}"
+      user: "{{ env_var('CIP_DB_USER', 'cip_admin') }}"
+      password: "{{ env_var('CIP_DB_PASSWORD', 'change_me') }}"
+      dbname: "{{ env_var('CIP_DB_NAME', 'cip') }}"
+      # Base schema. Per-layer routing (staging/intermediate/marts) is handled
+      # by the custom generate_schema_name macro.
+      schema: public
+      threads: "{{ env_var('CIP_DB_THREADS', '4') | int }}"
+      keepalives_idle: 0
+      connect_timeout: 10
+      sslmode: prefer

@@ -1,0 +1,5 @@
+status_code,is_revenue_positive
+completed,true
+pending,false
+cancelled,false
+refunded,false

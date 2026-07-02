@@ -1,0 +1,36 @@
+name: "customer_intelligence"
+version: "1.0.0"
+config-version: 2
+
+# The profile referenced here is defined in profiles.yml. Connection
+# parameters are read from environment variables (see profiles.yml).
+profile: "cip"
+
+# Standard dbt project directory layout.
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Layer-level default materializations. Individual models may override these
+# in their own config() block (e.g. large marts use `incremental`).
+models:
+  customer_intelligence:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: table
+    marts:
+      +materialized: table
+
+# Reference data loaded via `dbt seed`.
+seeds:
+  customer_intelligence:
+    +quote_columns: false
