@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: stg_support__tickets
+    description: >
+      Cleaned, deduplicated support tickets. One row per ticket_id, retaining the
+      record with the latest ingestion timestamp. Structural transforms only:
+      created_at and resolved_at cast to TIMESTAMPTZ and resolution_hours derived
+      as (resolved_at - created_at) in hours (NULL when unresolved).
+    columns:
+      - name: ticket_id
+        description: Unique ticket identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer that opened the ticket. Foreign key to stg_crm__customers.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_crm__customers')
+              field: customer_id
+      - name: subject
+        description: Short subject line of the ticket.
+      - name: description
+        description: Free-text ticket description (minimum 10 words enforced at generation).
+      - name: status
+        description: Ticket lifecycle status — one of open, in_progress, closed.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["open", "in_progress", "closed"]
+      - name: priority
+        description: Ticket priority level — one of low, medium, high.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["low", "medium", "high"]
+      - name: created_at
+        description: UTC timestamp of ticket creation (cast to TIMESTAMPTZ).
+      - name: resolved_at
+        description: >
+          UTC timestamp of ticket resolution (cast to TIMESTAMPTZ); NULL when the
+          ticket is not yet resolved.
+      - name: resolution_hours
+        description: >
+          Derived resolution time in hours — (resolved_at - created_at); NULL when
+          resolved_at is NULL.
+      - name: ingested_at
+        description: Row arrival timestamp in the Raw Zone (renamed from _ingested_at).
+      - name: _run_date
+        description: Pipeline run date partition key inherited from the Raw Zone.

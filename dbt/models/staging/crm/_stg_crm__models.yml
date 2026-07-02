@@ -9,13 +9,23 @@ models:
     columns:
       - name: customer_id
         description: Unique customer identifier (UUID4). Primary key.
+        tests:
+          - not_null
+          - unique
       - name: name
         description: Synthetic full name of the customer.
       - name: email
         description: Synthetic email address; unique per customer.
+        tests:
+          - not_null
+          - unique
       - name: acquisition_channel
         description: >
           Acquisition channel — one of organic, paid_search, social, referral, direct.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["organic", "paid_search", "social", "referral", "direct"]
       - name: country_code
         description: ISO 3166-1 alpha-2 country code (2 characters).
       - name: account_created_at

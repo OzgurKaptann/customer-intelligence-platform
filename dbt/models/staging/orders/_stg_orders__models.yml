@@ -10,11 +10,23 @@ models:
     columns:
       - name: order_id
         description: Unique order identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
       - name: customer_id
         description: Customer that placed the order. Foreign key to stg_crm__customers.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_crm__customers')
+              field: customer_id
       - name: order_status
         description: >
           Order lifecycle status — one of completed, pending, cancelled, refunded.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["completed", "pending", "cancelled", "refunded"]
       - name: total_amount_usd
         description: Total order amount in USD (NUMERIC(12,2)).
       - name: ordered_at
@@ -32,8 +44,16 @@ models:
     columns:
       - name: order_item_id
         description: Unique line item identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
       - name: order_id
         description: Parent order. Foreign key to stg_orders__orders.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders__orders')
+              field: order_id
       - name: product_id
         description: Identifier of the purchased product.
       - name: quantity

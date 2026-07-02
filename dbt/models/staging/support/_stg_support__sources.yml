@@ -1,0 +1,42 @@
+version: 2
+
+sources:
+  - name: support
+    description: >
+      Raw Zone Support domain — append-only synthetic customer support tickets
+      landed by the ingestion layer. Consumed only by the Support staging model.
+    database: "{{ env_var('CIP_DB_NAME', 'cip') }}"
+    schema: raw
+    loaded_at_field: _ingested_at
+    freshness:
+      warn_after: {count: 1, period: day}
+      error_after: {count: 2, period: day}
+    tables:
+      - name: tickets
+        description: >
+          Raw synthetic support tickets, one row per ticket. May contain duplicate
+          ticket_id values across re-runs; the staging layer deduplicates by latest
+          _ingested_at.
+        columns:
+          - name: ticket_id
+            description: Unique ticket identifier (UUID). Primary key of the Support domain.
+          - name: customer_id
+            description: Customer that opened the ticket. Foreign key to raw.customers.
+          - name: subject
+            description: Short subject line of the ticket.
+          - name: description
+            description: Free-text ticket description (minimum 10 words enforced at generation).
+          - name: status
+            description: Ticket lifecycle status — one of open, in_progress, closed.
+          - name: priority
+            description: Ticket priority level — one of low, medium, high.
+          - name: created_at
+            description: UTC timestamp (TIMESTAMPTZ) at which the ticket was created.
+          - name: resolved_at
+            description: >
+              UTC timestamp (TIMESTAMPTZ) at which the ticket was resolved;
+              populated only when status is closed, otherwise NULL.
+          - name: _ingested_at
+            description: Timestamp (TIMESTAMPTZ) at which the row landed in the Raw Zone.
+          - name: _run_date
+            description: Pipeline run date partition key (DATE) assigned at ingestion.

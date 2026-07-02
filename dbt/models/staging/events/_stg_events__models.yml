@@ -9,10 +9,18 @@ models:
     columns:
       - name: event_id
         description: Unique event identifier (UUID). Primary key.
+        tests:
+          - not_null
+          - unique
       - name: session_id
         description: Session grouping key linking related events.
       - name: customer_id
         description: Customer that generated the event. Foreign key to stg_crm__customers.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_crm__customers')
+              field: customer_id
       - name: event_type
         description: Interaction type, e.g. page_view, click, session_start.
       - name: page_url
