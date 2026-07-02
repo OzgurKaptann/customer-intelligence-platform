@@ -1,0 +1,27 @@
+{
+  "expectation_suite_name": "raw_customers_suite",
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.19",
+    "notes": "Raw CRM customers — required-field presence, >=95% non-null on required fields, PK/email uniqueness, acquisition_channel domain, ISO-2 country code. Requirements 4.2, 4.3, 4.6."
+  },
+  "expectations": [
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "customer_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "name"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "email"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "acquisition_channel"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "country_code"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "account_created_at"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "customer_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "name", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "email", "mostly": 0.95}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_unique", "kwargs": {"column": "customer_id"}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_be_unique", "kwargs": {"column": "email"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_in_set", "kwargs": {"column": "acquisition_channel", "value_set": ["organic", "paid_search", "social", "referral", "direct"]}, "meta": {}},
+
+    {"expectation_type": "expect_column_value_lengths_to_equal", "kwargs": {"column": "country_code", "value": 2}, "meta": {}}
+  ]
+}

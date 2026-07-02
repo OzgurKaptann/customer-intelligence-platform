@@ -1,0 +1,99 @@
+# =============================================================================
+# Great Expectations — project configuration (Task 12)
+# -----------------------------------------------------------------------------
+# FileSystemDataContext for the Customer Intelligence Platform. A single
+# PostgreSQL datasource (SqlAlchemyExecutionEngine) validates the five raw
+# tables. The connection string is read from the DATABASE_URL environment
+# variable via ${...} substitution — no secrets are committed here.
+#
+# ge_runner.run_checkpoint(suite_name, datasource_name) executes the matching
+# checkpoint under checkpoints/ and parses the CheckpointResult for failures.
+# =============================================================================
+
+config_version: 3.0
+
+# --- Datasource: single PostgreSQL instance, all raw tables ------------------
+datasources:
+  cip_postgres:
+    class_name: Datasource
+    module_name: great_expectations.datasource
+    execution_engine:
+      class_name: SqlAlchemyExecutionEngine
+      module_name: great_expectations.execution_engine
+      # Full SQLAlchemy URL, e.g. postgresql://user:pass@host:5432/cip.
+      # Substituted at runtime from the container environment.
+      connection_string: ${DATABASE_URL}
+    data_connectors:
+      # One configured asset per raw table so checkpoints can address them by
+      # a stable data_asset_name (customers, events, orders, campaigns, tickets).
+      raw_tables_connector:
+        class_name: ConfiguredAssetSqlDataConnector
+        module_name: great_expectations.datasource.data_connector
+        assets:
+          customers:
+            schema_name: raw
+            table_name: customers
+          events:
+            schema_name: raw
+            table_name: events
+          orders:
+            schema_name: raw
+            table_name: orders
+          campaigns:
+            schema_name: raw
+            table_name: campaigns
+          tickets:
+            schema_name: raw
+            table_name: tickets
+      # Runtime connector kept available for ad-hoc query-based batches.
+      default_runtime_data_connector_name:
+        class_name: RuntimeDataConnector
+        module_name: great_expectations.datasource.data_connector
+        batch_identifiers:
+          - default_identifier_name
+
+# Extra ${VAR} values may live here; environment variables take precedence.
+config_variables_file_path: uncommitted/config_variables.yml
+
+plugins_directory: plugins/
+
+stores:
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: expectations/
+
+  validations_store:
+    class_name: ValidationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/validations/
+
+  evaluation_parameter_store:
+    class_name: EvaluationParameterStore
+
+  checkpoint_store:
+    class_name: CheckpointStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      suppress_store_backend_id: true
+      base_directory: checkpoints/
+
+expectations_store_name: expectations_store
+validations_store_name: validations_store
+evaluation_parameter_store_name: evaluation_parameter_store
+checkpoint_store_name: checkpoint_store
+
+data_docs_sites:
+  local_site:
+    class_name: SiteBuilder
+    show_how_to_buttons: false
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/data_docs/local_site/
+    site_index_builder:
+      class_name: DefaultSiteIndexBuilder
+
+anonymous_usage_statistics:
+  enabled: false

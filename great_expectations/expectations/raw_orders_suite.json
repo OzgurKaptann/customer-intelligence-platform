@@ -1,0 +1,25 @@
+{
+  "expectation_suite_name": "raw_orders_suite",
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.19",
+    "notes": "Raw orders — required-field presence, >=95% non-null, PK uniqueness, order_status domain, non-negative total_amount_usd. Requirements 4.2, 4.3, 4.6."
+  },
+  "expectations": [
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "order_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "customer_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "order_status"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "total_amount_usd"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "order_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "customer_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "order_status", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "total_amount_usd", "mostly": 0.95}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_unique", "kwargs": {"column": "order_id"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_in_set", "kwargs": {"column": "order_status", "value_set": ["completed", "pending", "cancelled", "refunded"]}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_between", "kwargs": {"column": "total_amount_usd", "min_value": 0}, "meta": {}}
+  ]
+}

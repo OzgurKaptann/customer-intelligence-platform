@@ -1,0 +1,30 @@
+{
+  "expectation_suite_name": "raw_campaigns_suite",
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.19",
+    "notes": "Raw campaigns — required-field presence, platform domain, impressions >= clicks, and non-negative spend/impressions/clicks. Requirements 4.2, 4.3, 4.6."
+  },
+  "expectations": [
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "campaign_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "platform"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "impressions"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "clicks"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "daily_spend_usd"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "campaign_date"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "campaign_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "platform", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "campaign_date", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "impressions", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "clicks", "mostly": 0.95}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_in_set", "kwargs": {"column": "platform", "value_set": ["google_ads", "meta_ads"]}, "meta": {}},
+
+    {"expectation_type": "expect_column_pair_values_a_to_be_greater_than_b", "kwargs": {"column_A": "impressions", "column_B": "clicks", "or_equal": true}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_between", "kwargs": {"column": "daily_spend_usd", "min_value": 0}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_be_between", "kwargs": {"column": "impressions", "min_value": 0}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_be_between", "kwargs": {"column": "clicks", "min_value": 0}, "meta": {}}
+  ]
+}

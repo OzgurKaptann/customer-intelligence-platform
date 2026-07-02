@@ -1,0 +1,27 @@
+{
+  "expectation_suite_name": "raw_tickets_suite",
+  "ge_cloud_id": null,
+  "meta": {
+    "great_expectations_version": "0.18.19",
+    "notes": "Raw support tickets — required-field presence, PK uniqueness, status and priority domains. Requirements 4.2, 4.3, 4.6."
+  },
+  "expectations": [
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "ticket_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "customer_id"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "status"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "priority"}, "meta": {}},
+    {"expectation_type": "expect_column_to_exist", "kwargs": {"column": "description"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "ticket_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "customer_id", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "status", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "priority", "mostly": 0.95}, "meta": {}},
+    {"expectation_type": "expect_column_values_to_not_be_null", "kwargs": {"column": "description", "mostly": 0.95}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_unique", "kwargs": {"column": "ticket_id"}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_in_set", "kwargs": {"column": "status", "value_set": ["open", "in_progress", "closed"]}, "meta": {}},
+
+    {"expectation_type": "expect_column_values_to_be_in_set", "kwargs": {"column": "priority", "value_set": ["low", "medium", "high"]}, "meta": {}}
+  ]
+}

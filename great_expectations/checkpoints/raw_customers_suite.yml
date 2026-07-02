@@ -1,0 +1,21 @@
+name: raw_customers_suite
+config_version: 1.0
+class_name: Checkpoint
+module_name: great_expectations.checkpoint
+run_name_template: "%Y%m%d-%H%M%S-raw-customers"
+validations:
+  - batch_request:
+      datasource_name: cip_postgres
+      data_connector_name: raw_tables_connector
+      data_asset_name: customers
+    expectation_suite_name: raw_customers_suite
+action_list:
+  - name: store_validation_result
+    action:
+      class_name: StoreValidationResultAction
+  - name: store_evaluation_params
+    action:
+      class_name: StoreEvaluationParametersAction
+  - name: update_data_docs
+    action:
+      class_name: UpdateDataDocsAction
