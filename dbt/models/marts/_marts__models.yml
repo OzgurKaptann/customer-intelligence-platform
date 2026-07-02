@@ -1,0 +1,156 @@
+version: 2
+
+models:
+  - name: mart_customers
+    description: >
+      Business-facing customer dimension. One row per customer combining enriched
+      CRM attributes with trailing-window order and event activity. Exposes
+      is_active, the primary flag used by dashboards and downstream ML features to
+      distinguish engaged customers from dormant ones.
+    columns:
+      - name: customer_id
+        description: Customer identifier (UUID). Primary key of the dimension.
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: Customer full name (synthetic).
+        tests:
+          - not_null
+      - name: email
+        description: Customer email address (synthetic).
+        tests:
+          - not_null
+      - name: acquisition_channel
+        description: Channel through which the customer was acquired.
+        tests:
+          - not_null
+      - name: country_code
+        description: ISO 3166-1 alpha-2 country code.
+        tests:
+          - not_null
+      - name: account_created_at
+        description: Date the customer account was created (UTC).
+        tests:
+          - not_null
+      - name: customer_tenure_days
+        description: Whole days from account_created_at to the pipeline run date.
+        tests:
+          - not_null
+      - name: is_active
+        description: >
+          TRUE when the customer placed at least one order in the trailing 365
+          days OR generated at least one event in the trailing 365 days;
+          otherwise FALSE.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+        tests:
+          - not_null
+
+  - name: mart_orders
+    description: >
+      Business-facing order fact table. One row per order carrying the order
+      header fields plus the derived line-item metrics item_count and
+      avg_item_value_usd. Materialized incrementally (delete+insert on _run_date)
+      to refresh the current run date's partition without rebuilding history.
+    columns:
+      - name: order_id
+        description: >
+          Unique order identifier (UUID). Primary key and the unique_key for the
+          incremental delete+insert strategy.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer that placed the order. Foreign key to mart_customers.
+        tests:
+          - not_null
+      - name: order_status
+        description: Order lifecycle status (completed, pending, cancelled, refunded).
+        tests:
+          - not_null
+      - name: total_amount_usd
+        description: Total order amount in USD (NUMERIC(12,2)).
+        tests:
+          - not_null
+      - name: item_count
+        description: Number of line items on the order. Derived; always >= 1.
+        tests:
+          - not_null
+      - name: avg_item_value_usd
+        description: >
+          Average line-item value in USD (total_amount_usd / item_count),
+          cast to NUMERIC(10,2). Non-negative.
+        tests:
+          - not_null
+      - name: ordered_at
+        description: UTC timestamp of the order.
+        tests:
+          - not_null
+      - name: _run_date
+        description: >
+          Pipeline run date partition key from audit_columns(), stamped on every
+          row of the current run.
+        tests:
+          - not_null
+
+  - name: mart_campaigns
+    description: >
+      Business-facing campaign performance fact table. One row per
+      (campaign_id, campaign_date) with spend and engagement metrics, the derived
+      click_through_rate, and an anomaly_flag defaulting to FALSE that the
+      Anomaly_Model updates when a metric breaches its expected bounds.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - campaign_id
+            - campaign_date
+    columns:
+      - name: campaign_id
+        description: Campaign identifier (UUID). Part of the composite primary key.
+        tests:
+          - not_null
+      - name: campaign_date
+        description: Calendar date (DATE) of the metrics. Part of the composite primary key.
+        tests:
+          - not_null
+      - name: platform
+        description: Advertising platform — one of google_ads, meta_ads.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["google_ads", "meta_ads"]
+      - name: campaign_name
+        description: Human-readable campaign name.
+        tests:
+          - not_null
+      - name: daily_spend_usd
+        description: Spend for the campaign on the given day in USD (NUMERIC(12,2)).
+        tests:
+          - not_null
+      - name: impressions
+        description: Number of ad impressions on the given day (INTEGER).
+        tests:
+          - not_null
+      - name: clicks
+        description: Number of ad clicks on the given day (INTEGER).
+        tests:
+          - not_null
+      - name: click_through_rate
+        description: >
+          Derived click-through rate — clicks divided by NULLIF(impressions, 0),
+          coalesced to 0 and cast to NUMERIC(8,6).
+        tests:
+          - not_null
+      - name: anomaly_flag
+        description: >
+          Boolean anomaly indicator, defaulting to FALSE. Set to TRUE by the
+          Anomaly_Model when the campaign metric deviates beyond expected bounds.
+        tests:
+          - not_null
+      - name: _run_date
+        description: Pipeline run date partition key from audit_columns().
+        tests:
+          - not_null
