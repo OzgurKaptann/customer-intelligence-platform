@@ -38,6 +38,9 @@ _PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _MODEL_PATH = (
     _PROJECT_ROOT / "dbt" / "models" / "staging" / "crm" / "stg_crm__customers.sql"
 )
+_MART_360_PATH = (
+    _PROJECT_ROOT / "dbt" / "models" / "marts" / "mart_customer_360.sql"
+)
 
 # The raw source table the test populates with intentionally duplicated PKs.
 # It is created WITHOUT a primary key on customer_id so that duplicate
@@ -47,6 +50,13 @@ RAW_CUSTOMERS = "raw.customers"
 
 _CONFIG_RE = re.compile(r"\{\{\s*config\([^}]*\)\s*\}\}")
 _SOURCE_RE = re.compile(r"\{\{\s*source\([^}]*\)\s*\}\}")
+_REF_RE = re.compile(r"\{\{\s*ref\(\s*'([^']+)'\s*\)\s*\}\}")
+_AUDIT_RE = re.compile(r"\{\{\s*audit_columns\(\)\s*\}\}")
+_RUN_DATE_RE = re.compile(r"\{\{\s*get_run_date\(\)\s*\}\}")
+
+# The schema the mart_customer_360 property test materializes its input
+# relations (int_* / stg_* dependencies) into. Isolated per the fixture below.
+MART_360_SCHEMA = "cip_test_mart"
 
 
 def render_stg_crm_customers(source_relation: str = RAW_CUSTOMERS) -> str:
@@ -58,6 +68,33 @@ def render_stg_crm_customers(source_relation: str = RAW_CUSTOMERS) -> str:
     sql = _MODEL_PATH.read_text(encoding="utf-8")
     sql = _CONFIG_RE.sub("", sql)
     sql = _SOURCE_RE.sub(source_relation, sql)
+    return sql.strip()
+
+
+def render_mart_customer_360(
+    run_date: str, schema: str = MART_360_SCHEMA
+) -> str:
+    """Render the real ``mart_customer_360`` model into executable SQL.
+
+    The model's own RFM logic (the ``NTILE`` quintiles, the ``rfm_score`` string
+    assembly, the ``recency_days`` cap, and the inactive-customer defaults) is
+    left completely untouched — only the dbt Jinja glue is resolved:
+
+    * ``config(...)`` is stripped.
+    * every ``ref('...')`` is rewritten to ``<schema>.<model_name>`` so the
+      test's input relations are used.
+    * ``get_run_date()`` becomes a literal date cast and ``audit_columns()``
+      becomes ``<date cast> as _run_date`` — matching the macros exactly.
+
+    Running the real SQL (rather than reimplementing the scoring) means the test
+    fails if the model's invariants ever regress.
+    """
+    date_expr = f"cast('{run_date}' as date)"
+    sql = _MART_360_PATH.read_text(encoding="utf-8")
+    sql = _CONFIG_RE.sub("", sql)
+    sql = _REF_RE.sub(lambda m: f"{schema}.{m.group(1)}", sql)
+    sql = _AUDIT_RE.sub(f"{date_expr} as _run_date", sql)
+    sql = _RUN_DATE_RE.sub(date_expr, sql)
     return sql.strip()
 
 
@@ -171,4 +208,78 @@ def raw_customers_conn(pg_dsn):
     finally:
         with connection.cursor() as cur:
             cur.execute("DROP SCHEMA IF EXISTS raw CASCADE")
+        connection.close()
+
+
+@pytest.fixture
+def mart_360_conn(pg_dsn):
+    """A psycopg2 connection with empty ``mart_customer_360`` input relations.
+
+    Creates the four ``int_customer_*`` aggregates, ``int_customers__enriched``,
+    and ``stg_campaigns__campaigns`` — restricted to the columns the mart
+    actually consumes — inside an isolated ``cip_test_mart`` schema. The schema
+    is dropped before and after the test so nothing leaks between examples or
+    persists past the run. Tables are truncated by the test between hypothesis
+    examples.
+    """
+    connection = psycopg2.connect(pg_dsn)
+    connection.autocommit = True
+    schema = MART_360_SCHEMA
+    try:
+        with connection.cursor() as cur:
+            cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            cur.execute(f"CREATE SCHEMA {schema}")
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.int_customers__enriched (
+                    customer_id          VARCHAR(36)  NOT NULL,
+                    acquisition_channel  VARCHAR(50)  NOT NULL,
+                    customer_tenure_days INTEGER      NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.int_customer_orders__aggregated (
+                    customer_id          VARCHAR(36)   NOT NULL,
+                    total_order_count    INTEGER,
+                    total_spend_usd      NUMERIC(14, 2),
+                    order_frequency_365d INTEGER,
+                    total_spend_365d_usd NUMERIC(14, 2),
+                    order_count_last_30d INTEGER,
+                    order_count_prior_30d INTEGER,
+                    days_since_last_order INTEGER
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.int_customer_events__aggregated (
+                    customer_id           VARCHAR(36) NOT NULL,
+                    most_recent_event_date DATE,
+                    days_since_last_event  INTEGER
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.int_customer_tickets__aggregated (
+                    customer_id      VARCHAR(36) NOT NULL,
+                    open_ticket_count INTEGER
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.stg_campaigns__campaigns (
+                    campaign_id     VARCHAR(36)   NOT NULL,
+                    campaign_date   DATE          NOT NULL,
+                    daily_spend_usd NUMERIC(12, 2) NOT NULL
+                )
+                """
+            )
+        yield connection
+    finally:
+        with connection.cursor() as cur:
+            cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         connection.close()
