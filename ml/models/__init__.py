@@ -9,6 +9,7 @@ can be added to the daily scoring pipeline without touching existing ones
 Implemented:
 
 * :mod:`ml.models.segmentation` — RFM k-means customer segmentation (Task 26).
+* :mod:`ml.models.ltv` — gradient-boosted 12-month LTV scoring (Task 28).
 """
 
 from __future__ import annotations
