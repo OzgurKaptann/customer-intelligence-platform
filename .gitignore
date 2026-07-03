@@ -12,5 +12,8 @@ __pycache__/
 # MLflow
 mlflow/artifacts/
 
+# ML feature snapshots (generated Parquet; keep the directory, ignore the data)
+ml/feature_snapshots/*.parquet
+
 # dbt
 .dbt/
