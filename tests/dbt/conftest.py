@@ -41,6 +41,14 @@ _MODEL_PATH = (
 _MART_360_PATH = (
     _PROJECT_ROOT / "dbt" / "models" / "marts" / "mart_customer_360.sql"
 )
+_INTERMEDIATE_DIR = _PROJECT_ROOT / "dbt" / "models" / "intermediate"
+_INT_SESSIONS_PATH = _INTERMEDIATE_DIR / "int_sessions__with_duration.sql"
+_INT_ORDERS_ITEMS_PATH = _INTERMEDIATE_DIR / "int_orders__with_items.sql"
+_INT_CUSTOMER_ORDERS_PATH = _INTERMEDIATE_DIR / "int_customer_orders__aggregated.sql"
+
+# The schema the intermediate-layer property test (Task 23) materializes its
+# input relations (stg_* / int_* dependencies) into. Isolated per the fixture.
+INTERMEDIATE_SCHEMA = "cip_test_int"
 
 # The raw source table the test populates with intentionally duplicated PKs.
 # It is created WITHOUT a primary key on customer_id so that duplicate
@@ -96,6 +104,55 @@ def render_mart_customer_360(
     sql = _AUDIT_RE.sub(f"{date_expr} as _run_date", sql)
     sql = _RUN_DATE_RE.sub(date_expr, sql)
     return sql.strip()
+
+
+def _render_intermediate_model(
+    path: pathlib.Path, run_date: str, schema: str = INTERMEDIATE_SCHEMA
+) -> str:
+    """Render an intermediate-layer model file into executable SQL.
+
+    The model's own derivation logic (session boundaries, item_count and
+    avg_item_value_usd arithmetic, the trailing-window ``FILTER`` clauses) is left
+    completely untouched — only the dbt Jinja glue is resolved, identically to
+    ``render_mart_customer_360``:
+
+    * ``config(...)`` is stripped.
+    * every ``ref('...')`` is rewritten to ``<schema>.<model_name>`` so the
+      test's input relations are used.
+    * ``get_run_date()`` becomes a literal date cast and ``audit_columns()``
+      becomes ``<date cast> as _run_date`` — matching the macros exactly.
+
+    Running the real SQL (rather than reimplementing the derivations) means the
+    test fails if a model's consistency invariants ever regress.
+    """
+    date_expr = f"cast('{run_date}' as date)"
+    sql = path.read_text(encoding="utf-8")
+    sql = _CONFIG_RE.sub("", sql)
+    sql = _REF_RE.sub(lambda m: f"{schema}.{m.group(1)}", sql)
+    sql = _AUDIT_RE.sub(f"{date_expr} as _run_date", sql)
+    sql = _RUN_DATE_RE.sub(date_expr, sql)
+    return sql.strip()
+
+
+def render_int_sessions_with_duration(
+    run_date: str, schema: str = INTERMEDIATE_SCHEMA
+) -> str:
+    """Render the real ``int_sessions__with_duration`` model into SQL."""
+    return _render_intermediate_model(_INT_SESSIONS_PATH, run_date, schema)
+
+
+def render_int_orders_with_items(
+    run_date: str, schema: str = INTERMEDIATE_SCHEMA
+) -> str:
+    """Render the real ``int_orders__with_items`` model into SQL."""
+    return _render_intermediate_model(_INT_ORDERS_ITEMS_PATH, run_date, schema)
+
+
+def render_int_customer_orders_aggregated(
+    run_date: str, schema: str = INTERMEDIATE_SCHEMA
+) -> str:
+    """Render the real ``int_customer_orders__aggregated`` model into SQL."""
+    return _render_intermediate_model(_INT_CUSTOMER_ORDERS_PATH, run_date, schema)
 
 
 def _docker_available() -> bool:
@@ -275,6 +332,72 @@ def mart_360_conn(pg_dsn):
                     campaign_id     VARCHAR(36)   NOT NULL,
                     campaign_date   DATE          NOT NULL,
                     daily_spend_usd NUMERIC(12, 2) NOT NULL
+                )
+                """
+            )
+        yield connection
+    finally:
+        with connection.cursor() as cur:
+            cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        connection.close()
+
+
+@pytest.fixture
+def intermediate_conn(pg_dsn):
+    """A psycopg2 connection with empty intermediate-model input relations.
+
+    Creates only the columns the three intermediate models under test actually
+    consume, inside an isolated ``cip_test_int`` schema:
+
+    * ``stg_events__events``      → input to ``int_sessions__with_duration``
+    * ``stg_orders__orders`` and
+      ``stg_orders__order_items``  → inputs to ``int_orders__with_items``
+    * ``int_orders__with_items``   → input to ``int_customer_orders__aggregated``
+
+    The schema is dropped before and after the test so nothing leaks between
+    examples or persists past the run. Tables are truncated by the test between
+    hypothesis examples.
+    """
+    connection = psycopg2.connect(pg_dsn)
+    connection.autocommit = True
+    schema = INTERMEDIATE_SCHEMA
+    try:
+        with connection.cursor() as cur:
+            cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            cur.execute(f"CREATE SCHEMA {schema}")
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.stg_events__events (
+                    session_id  VARCHAR(36) NOT NULL,
+                    occurred_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.stg_orders__orders (
+                    order_id         VARCHAR(36)   NOT NULL,
+                    customer_id      VARCHAR(36)   NOT NULL,
+                    order_status     VARCHAR(20)   NOT NULL,
+                    total_amount_usd NUMERIC(12, 2) NOT NULL,
+                    ordered_at       TIMESTAMPTZ   NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.stg_orders__order_items (
+                    order_item_id VARCHAR(36) NOT NULL,
+                    order_id      VARCHAR(36) NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE TABLE {schema}.int_orders__with_items (
+                    customer_id      VARCHAR(36)   NOT NULL,
+                    total_amount_usd NUMERIC(12, 2) NOT NULL,
+                    ordered_at       TIMESTAMPTZ   NOT NULL
                 )
                 """
             )
