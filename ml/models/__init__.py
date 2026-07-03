@@ -10,6 +10,7 @@ Implemented:
 
 * :mod:`ml.models.segmentation` — RFM k-means customer segmentation (Task 26).
 * :mod:`ml.models.ltv` — gradient-boosted 12-month LTV scoring (Task 28).
+* :mod:`ml.models.churn` — random-forest churn risk scoring (Task 30).
 """
 
 from __future__ import annotations
